@@ -16,14 +16,18 @@ pipeline {
             }
         }
 
-        // 2️⃣ Build Node.js frontend (inside Node Docker container)
+        // 2️⃣ Build Node.js frontend inside Docker (without Docker agent)
         stage('Build (Node)') {
-            agent {
-                docker { image 'node:20-alpine' } // Ensures npm/node is available
-            }
             steps {
-                sh 'npm install'
-                sh 'npm run build'
+                sh """
+                    docker run --rm -u $(id -u):$(id -g) \
+                    -v $PWD:/app -w /app node:20-alpine \
+                    sh -c '
+                        rm -rf node_modules &&
+                        npm install --cache /tmp/.npm &&
+                        npm run build
+                    '
+                """
             }
         }
 
@@ -59,9 +63,7 @@ pipeline {
         stage('Deploy Image') {
             steps {
                 sh """
-                    # Stop previous container if running
                     docker rm -f github-profile-summarizer || true
-                    # Run new container
                     docker run -d --name github-profile-summarizer -p 8081:80 ${IMAGE_NAME}:${IMAGE_TAG}
                 """
             }

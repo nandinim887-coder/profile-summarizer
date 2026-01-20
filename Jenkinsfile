@@ -16,22 +16,14 @@ pipeline {
             }
         }
 
-        // 2️⃣ Build Node.js frontend inside Docker (without Docker agent)
+        // 2️⃣ Build Node.js frontend inside Docker (avoids npm permission issues)
         stage('Build (Node)') {
             steps {
-                sh """
-                    docker run --rm -u $(id -u):$(id -g) \
-                    -v $PWD:/app -w /app node:20-alpine \
-                    sh -c '
-                        rm -rf node_modules &&
-                        npm install --cache /tmp/.npm &&
-                        npm run build
-                    '
-                """
+                sh 'docker run --rm -u $(id -u):$(id -g) -v $PWD:/app -w /app node:20-alpine sh -c "rm -rf node_modules && npm install --cache /tmp/.npm && npm run build"'
             }
         }
 
-        // 3️⃣ Docker image build with GitHub token and max repos as build args
+        // 3️⃣ Build Docker image with GitHub token and max repos
         stage('Docker Build') {
             steps {
                 withCredentials([string(credentialsId: 'github-token-secret', variable: 'GITHUB_TOKEN_VALUE')]) {
@@ -59,11 +51,13 @@ pipeline {
             }
         }
 
-        // 5️⃣ Deploy image on server (port 8081)
+        // 5️⃣ Deploy Docker container (port 8081)
         stage('Deploy Image') {
             steps {
                 sh """
+                    # Stop previous container if running
                     docker rm -f github-profile-summarizer || true
+                    # Run new container
                     docker run -d --name github-profile-summarizer -p 8081:80 ${IMAGE_NAME}:${IMAGE_TAG}
                 """
             }

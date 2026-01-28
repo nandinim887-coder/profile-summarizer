@@ -3,78 +3,72 @@ pipeline {
 
     environment {
         IMAGE_NAME = "nandini88847/github-profile-summarizer"
-        IMAGE_TAG = "v${env.BUILD_NUMBER}"
-        MAX_REPOS = "50"
+        IMAGE_TAG  = "v7"
     }
 
     stages {
 
-        // 1️⃣ Checkout code from GitHub
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        // 2️⃣ Build Node.js frontend inside Docker (avoids npm permission issues)
         stage('Build (Node)') {
             steps {
                 sh '''
-                set -e
-                MSYS_NO_PATHCONV=1 docker run --rm \
-                  -v "$WORKSPACE":/app \
+                docker run --rm \
+                  -v "$PWD:/app" \
                   -w /app \
                   node:20-alpine \
-                  sh -c "npm install --cache /tmp/.npm && npm run build"
+                  sh -c "npm install && npm run build"
                 '''
             }
         }
 
-        // 3️⃣ Build Docker image with GitHub token and max repos
         stage('Docker Build') {
             steps {
-                withCredentials([string(credentialsId: 'github-token-secret', variable: 'GITHUB_TOKEN_VALUE')]) {
-                    sh """
-                        docker build \
-                        --build-arg VITE_GITHUB_TOKEN=${GITHUB_TOKEN_VALUE} \
-                        --build-arg VITE_MAX_REPOS=${MAX_REPOS} \
-                        -t ${IMAGE_NAME}:${IMAGE_TAG} .
-                    """
+                withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN_VALUE')]) {
+                    sh '''
+                    docker build \
+                      --build-arg VITE_GITHUB_TOKEN=$GITHUB_TOKEN_VALUE \
+                      --build-arg VITE_MAX_REPOS=50 \
+                      -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    '''
                 }
             }
         }
 
-        // 4️⃣ Docker login and push to Docker Hub
-        stage('Docker Login & Push') {
+        stage('Docker Login') {
             steps {
                 withCredentials([usernamePassword(
-            credentialsId: 'DockerHub',
-            usernameVariable: 'DOCKER_USER',
-            passwordVariable: 'DOCKER_PASS'
-        )]) {
-            sh '''
-            echo "Docker user is: $DOCKER_USER"
-            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            '''
+                    credentialsId: 'DockerHub',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                    echo "Docker user is: $DOCKER_USER"
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    '''
+                }
             }
         }
 
-        // 5️⃣ Deploy Docker container (port 8081)
-        stage('Deploy Image') {
+        stage('Docker Push') {
             steps {
-                sh """
-                    # Stop previous container if running
-                    docker rm -f github-profile-summarizer || true
-                    # Run new container
-                    docker run -d --name github-profile-summarizer -p 8081:80 ${IMAGE_NAME}:${IMAGE_TAG}
-                """
+                sh '''
+                docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
             }
         }
     }
 
     post {
-        always {
-            echo "✅ Docker image pushed and deployed: ${IMAGE_NAME}:${IMAGE_TAG}"
+        success {
+            echo "✅ Docker image pushed successfully: ${IMAGE_NAME}:${IMAGE_TAG}"
+        }
+        failure {
+            echo "❌ Pipeline failed"
         }
     }
 }

@@ -4,31 +4,39 @@ pipeline {
     environment {
         IMAGE_NAME = "nandini88847/github-profile-summarizer"
         IMAGE_TAG  = "v7"
+        MAX_REPOS  = "50"
     }
 
     stages {
 
+        // 1️⃣ Checkout code
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
+        // 2️⃣ Build Node app inside Docker
         stage('Build (Node)') {
             steps {
                 sh '''
-                docker run --rm \
-                  -v "$PWD:/app" \
+                set -e
+                MSYS_NO_PATHCONV=1 docker run --rm \
+                  -v "$WORKSPACE:/app" \
                   -w /app \
                   node:20-alpine \
-                  sh -c "npm install && npm run build"
+                  sh -c "npm install --cache /tmp/.npm && npm run build"
                 '''
             }
         }
 
+        // 3️⃣ Build Docker image
         stage('Docker Build') {
             steps {
-                withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN_VALUE')]) {
+                withCredentials([string(
+                    credentialsId: 'github-token-secret',
+                    variable: 'GITHUB_TOKEN_VALUE'
+                )]) {
                     sh '''
                     docker build \
                       --build-arg VITE_GITHUB_TOKEN=$GITHUB_TOKEN_VALUE \
@@ -39,7 +47,8 @@ pipeline {
             }
         }
 
-        stage('Docker Login') {
+        // 4️⃣ Docker Login & Push
+        stage('Docker Login & Push') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'DockerHub',
@@ -47,17 +56,22 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                    echo "Docker user is: $DOCKER_USER"
                     echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
                     '''
                 }
             }
         }
 
-        stage('Docker Push') {
+        // 5️⃣ Deploy container
+        stage('Deploy Image') {
             steps {
                 sh '''
-                docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                docker rm -f github-profile-summarizer || true
+                docker run -d \
+                  --name github-profile-summarizer \
+                  -p 8081:80 \
+                  ${IMAGE_NAME}:${IMAGE_TAG}
                 '''
             }
         }
@@ -65,7 +79,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Docker image pushed successfully: ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "✅ Docker image pushed and deployed: ${IMAGE_NAME}:${IMAGE_TAG}"
         }
         failure {
             echo "❌ Pipeline failed"

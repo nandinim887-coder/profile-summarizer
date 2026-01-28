@@ -47,12 +47,14 @@ pipeline {
         // 4️⃣ Docker login and push to Docker Hub
         stage('Docker Login & Push') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'DockerHub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-                }
-                sh '''
+                withCredentials([usernamePassword(
+            credentialsId: 'DockerHub',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+        )]) {
+            sh '''
+            echo "Docker user is: $DOCKER_USER"
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            docker push nandini88847/github-profile-summarizer:v7
             '''
             }
         }

@@ -19,7 +19,14 @@ pipeline {
         // 2️⃣ Build Node.js frontend inside Docker (avoids npm permission issues)
         stage('Build (Node)') {
             steps {
-                sh 'docker run --rm -u $(id -u):$(id -g) -v $PWD:/app -w /app node:20-alpine sh -c "rm -rf node_modules && npm install --cache /tmp/.npm && npm run build"'
+                sh '''
+                set -e
+                MSYS_NO_PATHCONV=1 docker run --rm \
+                  -v "$WORKSPACE":/app \
+                  -w /app \
+                  node:20-alpine \
+                  sh -c "npm install --cache /tmp/.npm && npm run build"
+                '''
             }
         }
 
